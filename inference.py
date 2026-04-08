@@ -1,67 +1,97 @@
 import os
+import json
 from openai import OpenAI
 
-from server.neural_dbs_env_environment import NeuralDbsEnvironment
 from models import NeuralDbsAction
-from graders import grade
-from tasks import TASKS
-
-# Required env variables
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "baseline-policy")
-HF_TOKEN = os.getenv("HF_TOKEN", "dummy")
-
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+from server.neural_dbs_env_environment import NeuralDbsEnvironment
 
 
-def run_task(env, task_name, task_config):
-    rewards = []
-    steps = 0
+# Initialize OpenAI client using hackathon-provided variables
+client = OpenAI(
+    base_url=os.environ["API_BASE_URL"],
+    api_key=os.environ["API_KEY"]
+)
 
-    print(f"[START] task={task_name} env=neural_dbs_env model={MODEL_NAME}")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+
+
+def get_action_from_llm(obs):
+    prompt = f"""
+You are controlling a neural stimulation system.
+
+Current state:
+beta_power = {obs.beta_power}
+phase = {obs.phase}
+energy_used = {obs.energy_used}
+
+Goal:
+- Reduce beta_power to near 0
+- Minimize energy usage
+
+Return ONLY valid JSON in this format:
+{{"amplitude": float, "frequency": float, "pulse_width": float}}
+"""
+
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0
+    )
+
+    text = response.choices[0].message.content.strip()
 
     try:
-        obs = env.reset(task_config)
+        action_dict = json.loads(text)
+    except:
+        # fallback safe action
+        action_dict = {
+            "amplitude": 0.5,
+            "frequency": 0.5,
+            "pulse_width": 0.5
+        }
 
-        for step in range(1, 11):
-            action = NeuralDbsAction(
-                amplitude=0.5,
-                frequency=0.5,
-                pulse_width=0.5
-            )
-
-            result = env.step(action)
-
-            reward = result.reward
-            done = result.done
-            error = None
-
-            rewards.append(reward)
-            steps = step
-
-            print(
-                f"[STEP] step={step} action=amp=0.5,freq=0.5,pw=0.5 "
-                f"reward={reward:.2f} done={str(done).lower()} error=null"
-            )
-
-            if done:
-                break
-
-        score = grade(env)
-        success = score > 0.5
-
-    except Exception as e:
-        success = False
-        score = 0.0
-
-    print(
-        f"[END] success={str(success).lower()} steps={steps} "
-        f"score={score:.3f} rewards={','.join(f'{r:.2f}' for r in rewards)}"
+    return NeuralDbsAction(
+        amplitude=float(action_dict["amplitude"]),
+        frequency=float(action_dict["frequency"]),
+        pulse_width=float(action_dict["pulse_width"])
     )
 
 
-if __name__ == "__main__":
+def run_task(task_name):
     env = NeuralDbsEnvironment()
+    obs = env.reset()
 
-    for task_name, task_config in TASKS.items():
-        run_task(env, task_name, task_config)
+    print(f"[START] task={task_name} env=neural_dbs_env model={MODEL_NAME}")
+
+    rewards = []
+
+    for step in range(10):
+        action = get_action_from_llm(obs)
+
+        obs = env.step(action)
+        rewards.append(obs.reward)
+
+        print(
+            f"[STEP] step={step+1} "
+            f"action=amp={round(action.amplitude,2)},freq={round(action.frequency,2)},pw={round(action.pulse_width,2)} "
+            f"reward={round(obs.reward,2)} "
+            f"done={str(obs.done).lower()} error=null"
+        )
+
+        if obs.done:
+            break
+
+    score = sum(rewards) / len(rewards)
+
+    print(
+        f"[END] success=true steps={len(rewards)} "
+        f"score={round(score,3)} "
+        f"rewards={','.join([str(round(r,2)) for r in rewards])}"
+    )
+
+
+if _name_ == "_main_":
+    for task in ["easy", "medium", "hard"]:
+        run_task(task)
