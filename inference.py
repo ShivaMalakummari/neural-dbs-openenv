@@ -93,5 +93,4 @@ def run_task(task_name):
 
 
 if _name_ == "_main_":
-    for task in ["easy", "medium", "hard"]:
-        run_task(task)
+    main()
