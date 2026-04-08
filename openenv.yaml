@@ -1,0 +1,5 @@
+name: neural_dbs_env
+description: Adaptive deep brain stimulation RL environment
+version: 1.0
+
+entrypoint: server.neural_dbs_env_environment:NeuralDbsEnvironment
