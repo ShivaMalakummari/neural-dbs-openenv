@@ -1,6 +1,5 @@
 ---
 title: Neural DBS Environment Server
-emoji: 🧠
 colorFrom: blue
 colorTo: purple
 sdk: docker
